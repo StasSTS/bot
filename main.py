@@ -14,6 +14,18 @@ import handlers.orders as orders
 from database import db
 from states import BotStates
 
+from flask import Flask
+from threading import Thread
+
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Бот работает!"
+
+def run_web_server():
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
+
 # Настройка логирования
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -35,6 +47,9 @@ def main():
     from telebot.storage import StateMemoryStorage
     state_storage = StateMemoryStorage()
     bot = telebot.TeleBot(config.BOT_TOKEN, state_storage=state_storage)
+    
+    # Запуск веб-сервера в отдельном потоке для предотвращения засыпания
+    Thread(target=run_web_server).start()
     
     # Регистрация обработчиков команд
     

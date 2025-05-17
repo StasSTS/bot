@@ -17,6 +17,12 @@ from states import BotStates
 from flask import Flask
 from threading import Thread
 
+# Изменяем импорт werkzeug для совместимости
+try:
+    from werkzeug.utils import url_quote
+except ImportError:
+    from werkzeug.urls import url_quote
+
 app = Flask(__name__)
 
 @app.route('/')

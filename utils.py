@@ -191,6 +191,9 @@ def get_cart_details(user_id: int) -> Tuple[str, float]:
                     # Округляем вверх до двух знаков после точки
                     # Умножаем на 100, округляем вверх, делим на 100
                     formatted_quantity = math.ceil(item.quantity * 100) / 100
+                elif product.unit == "шт" and isinstance(item.quantity, float):
+                    # Для штучных товаров показываем целое число
+                    formatted_quantity = int(item.quantity) if item.quantity == int(item.quantity) else item.quantity
                 
                 # Изменяем формат отображения товара в корзине
                 # Используем format_money_simple для цены за единицу

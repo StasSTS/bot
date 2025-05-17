@@ -473,14 +473,6 @@ def main():
             if call.data == "back":
                 customer.back_to_customer_main(bot, call)
         
-        # Обработка выбора времени доставки
-        elif current_state == BotStates.DELIVERY_TIME_SELECT.name:
-            if call.data.startswith("delivery_time_"):
-                cart.delivery_time_selected(bot, call)
-            elif call.data == "back":
-                # Возвращаемся к предыдущему шагу (оформление заказа)
-                cart.checkout_start(bot, call)
-                
         # Обработка списка заказов
         elif current_state == BotStates.ORDERS_LIST.name:
             if call.data.startswith("view_order_"):

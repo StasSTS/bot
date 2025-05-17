@@ -290,5 +290,69 @@
     "address": "Вода",
     "delivery_time": "16 - 18:00",
     "total": 1177.0
+  },
+  {
+    "id": 17,
+    "user_id": 1037625085,
+    "items": [
+      {
+        "product_id": 3,
+        "quantity": 0.25
+      }
+    ],
+    "status": "completed",
+    "created_at": "2025-05-17T13:48:15.367592",
+    "phone": "+7-918-325-16-77",
+    "address": "Вода",
+    "delivery_time": null,
+    "total": 37.5
+  },
+  {
+    "id": 18,
+    "user_id": 1037625085,
+    "items": [
+      {
+        "product_id": 5,
+        "quantity": 0.25
+      }
+    ],
+    "status": "new",
+    "created_at": "2025-05-17T14:46:47.205639",
+    "phone": "+7-918-492-18-78",
+    "address": "Апшеронск партизанская 23",
+    "delivery_time": null,
+    "total": 50.0
+  },
+  {
+    "id": 19,
+    "user_id": 1037625085,
+    "items": [
+      {
+        "product_id": 2,
+        "quantity": 2.0
+      }
+    ],
+    "status": "completed",
+    "created_at": "2025-05-17T14:47:24.421791",
+    "phone": "+7-918-492-18-78",
+    "address": "Апшеронск партизанская 23",
+    "delivery_time": null,
+    "total": 200.0
+  },
+  {
+    "id": 20,
+    "user_id": 1037625085,
+    "items": [
+      {
+        "product_id": 1,
+        "quantity": 1.0
+      }
+    ],
+    "status": "new",
+    "created_at": "2025-05-17T14:57:34.011485",
+    "phone": "+7-918-492-18-78",
+    "address": "Апшеронск Ворошилова 23",
+    "delivery_time": null,
+    "total": 300.0
   }
 ]

@@ -202,8 +202,52 @@ def phone_input_start(bot: telebot.TeleBot, call: types.CallbackQuery) -> None:
     with bot.retrieve_data(call.from_user.id, call.message.chat.id) as data:
         data['phone_digits'] = ""
     
-    # Отображаем маску ввода и виртуальную клавиатуру
-    update_phone_input_ui(bot, call.message, "")
+    # Удаляем предыдущее сообщение 
+    try:
+        bot.delete_message(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id
+        )
+    except Exception as e:
+        logger = logging.getLogger(__name__)
+        logger.error(f"Ошибка при удалении сообщения: {str(e)}")
+    
+    # Инлайн-клавиатура с кнопкой "Назад"
+    inline_keyboard = types.InlineKeyboardMarkup()
+    inline_keyboard.add(keyboards.BACK_BUTTON)
+    
+    # Создаем клавиатуру с кнопкой отправки контакта - делаем кнопку большой и заметной
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    keyboard.add(types.KeyboardButton('📱 ОТПРАВИТЬ МОЙ НОМЕР ТЕЛЕФОНА 📱', request_contact=True))
+    
+    # Отправляем сообщение с большой и заметной кнопкой для быстрого ввода
+    bot.send_message(
+        chat_id=call.message.chat.id,
+        text="👇 <b>НАЖМИТЕ НА КНОПКУ НИЖЕ ДЛЯ БЫСТРОГО ВВОДА</b> 👇",
+        reply_markup=keyboard,
+        parse_mode='HTML'
+    )
+    
+    # Текст с инструкциями
+    text = (
+        "📱 <b>Введите номер телефона</b>\n\n"
+        "Варианты ввода:\n"
+        "1️⃣ Нажмите большую кнопку <b>\"ОТПРАВИТЬ МОЙ НОМЕР ТЕЛЕФОНА\"</b>\n"
+        "2️⃣ Или введите номер с клавиатуры в любом формате:\n"
+        "   • +7XXXXXXXXXX\n"
+        "   • 8XXXXXXXXXX\n"
+        "   • XXXXXXXXXX (только 10 цифр)\n\n"
+        "<i>Номер нужен для связи с вами по вопросам доставки.</i>\n\n"
+        "Для возврата к предыдущему шагу нажмите кнопку ниже:"
+    )
+    
+    # Отправляем инструкции и кнопку назад
+    bot.send_message(
+        chat_id=call.message.chat.id,
+        text=text,
+        reply_markup=inline_keyboard,
+        parse_mode='HTML'
+    )
 
 def update_phone_input_ui(bot: telebot.TeleBot, message: types.Message, digits: str) -> None:
     """Обновляет интерфейс ввода телефона с текущими введенными цифрами
@@ -312,10 +356,6 @@ def process_phone_submit(bot: telebot.TeleBot, call: types.CallbackQuery) -> Non
     # Устанавливаем состояние ADDRESS_INPUT
     bot.set_state(call.from_user.id, BotStates.ADDRESS_INPUT, call.message.chat.id)
     
-    # Создаем клавиатуру с кнопкой "Назад"
-    keyboard = types.InlineKeyboardMarkup()
-    keyboard.add(keyboards.BACK_BUTTON)
-    
     # Удаляем предыдущее сообщение с виртуальной клавиатурой
     try:
         bot.delete_message(
@@ -329,6 +369,10 @@ def process_phone_submit(bot: telebot.TeleBot, call: types.CallbackQuery) -> Non
     # Создаем форсированный ответ с подсказкой
     force_reply = types.ForceReply(selective=True, input_field_placeholder="Введите адрес доставки")
     
+    # Клавиатура с кнопкой "Назад"
+    keyboard = types.InlineKeyboardMarkup()
+    keyboard.add(keyboards.BACK_BUTTON)
+    
     # Отправляем новое сообщение с запросом адреса и подсказкой
     bot.send_message(
         chat_id=call.message.chat.id,
@@ -341,129 +385,6 @@ def process_phone_submit(bot: telebot.TeleBot, call: types.CallbackQuery) -> Non
     bot.send_message(
         chat_id=call.message.chat.id,
         text="Для возврата к предыдущему шагу нажмите кнопку ниже:",
-        reply_markup=keyboard
-    )
-
-def use_saved_data(bot: telebot.TeleBot, call: types.CallbackQuery) -> None:
-    """Использовать сохраненные данные для заказа."""
-    bot.answer_callback_query(call.id)
-    
-    user_id = call.from_user.id
-    user = db.get_user(user_id)
-    
-    # Проверяем, есть ли сохраненные данные
-    if not user.phone or not user.address:
-        keyboard = types.InlineKeyboardMarkup()
-        keyboard.add(keyboards.BACK_BUTTON)
-        
-        bot.edit_message_text(
-            "У вас нет сохраненных данных.",
-            chat_id=call.message.chat.id,
-            message_id=call.message.message_id,
-            reply_markup=keyboard
-        )
-        return
-    
-    # Сохраняем данные в состоянии для последующих шагов
-    with bot.retrieve_data(call.from_user.id, call.message.chat.id) as data:
-        data['phone'] = user.phone
-        data['address'] = user.address
-    
-    # Создаем заказ сразу без выбора времени доставки
-    order = db.create_order(user_id, user.phone, user.address, None)
-    
-    if not order:
-        bot.edit_message_text(
-            "Ошибка при создании заказа.",
-            chat_id=call.message.chat.id,
-            message_id=call.message.message_id,
-            reply_markup=keyboards.get_customer_main_keyboard_with_cart(user_id)
-        )
-        return
-    
-    # Отправляем уведомление администратору о новом заказе
-    try:
-        utils.notify_admin_about_new_order(bot, order.id)
-    except Exception as e:
-        logger = logging.getLogger(__name__)
-        logger.error(f"Не удалось отправить уведомление администратору: {str(e)}")
-        # Не прерываем основной процесс заказа
-    
-    # Устанавливаем состояние CUSTOMER_MODE
-    bot.set_state(call.from_user.id, BotStates.CUSTOMER_MODE, call.message.chat.id)
-    
-    # Подтверждаем заказ
-    bot.edit_message_text(
-        f"Заказ №{order.id} успешно оформлен!\n\n"
-        f"Телефон: {order.phone}\n"
-        f"Адрес доставки: {order.address}\n\n"
-        f"Мы свяжемся с вами в ближайшее время для подтверждения заказа.",
-        chat_id=call.message.chat.id,
-        message_id=call.message.message_id,
-        reply_markup=keyboards.get_customer_main_keyboard_with_cart(user_id)
-    )
-
-def process_phone(bot: telebot.TeleBot, message: types.Message) -> None:
-    """Обработка ввода номера телефона с клавиатуры."""
-    phone = message.text.strip()
-    
-    # Проверка на количество цифр в номере
-    digits = re.sub(r'\D', '', phone)
-    
-    # Если номер начинается с 8 или 7, не учитываем эту цифру при подсчете
-    if digits.startswith('8') or digits.startswith('7'):
-        digits = digits[1:]
-    
-    # Проверяем, что в номере не более 10 цифр
-    if len(digits) > 10:
-        # Обновляем виртуальную клавиатуру с сообщением об ошибке
-        with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
-            current_digits = data.get('phone_digits', "")
-        
-        # Отправляем сообщение об ошибке
-        bot.send_message(
-            message.chat.id,
-            "Номер телефона должен содержать не более 10 цифр (без учета кода страны).",
-            reply_markup=keyboards.get_phone_input_keyboard(current_digits)
-        )
-        return
-    
-    # Если введено меньше 10 цифр, просто обновляем интерфейс
-    if len(digits) < 10:
-        # Сохраняем введенные цифры
-        with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
-            data['phone_digits'] = digits
-        
-        # Обновляем интерфейс
-        update_phone_input_ui(bot, message, digits)
-        return
-    
-    # Форматируем телефон
-    formatted_phone = utils.format_phone("7" + digits)
-    
-    # Сохраняем телефон в данных состояния
-    with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
-        data['phone'] = formatted_phone
-        # Очищаем временные данные
-        data.pop('phone_digits', None)
-    
-    # Сохраняем телефон в профиле пользователя
-    user_id = message.from_user.id
-    user = db.get_user(user_id)
-    user.phone = formatted_phone
-    db.update_user(user_id)
-    
-    # Устанавливаем состояние ADDRESS_INPUT
-    bot.set_state(message.from_user.id, BotStates.ADDRESS_INPUT, message.chat.id)
-    
-    # Запрашиваем адрес
-    keyboard = types.InlineKeyboardMarkup()
-    keyboard.add(keyboards.BACK_BUTTON)
-    
-    bot.send_message(
-        message.chat.id,
-        f"Телефон сохранен: {formatted_phone}\n\n"
-        "Введите адрес доставки (укажите населенный пункт, улицу, дом, подъезд и квартиру):",
         reply_markup=keyboard
     )
 
@@ -493,7 +414,7 @@ def process_address(bot: telebot.TeleBot, message: types.Message) -> None:
     user = db.get_user(user_id)
     user.address = address
     db.update_user(user_id)
-
+    
     # Создаем заказ сразу без выбора времени доставки
     order = db.create_order(user_id, phone, address, None)
     
@@ -578,4 +499,164 @@ def delivery_time_selected(bot: telebot.TeleBot, call: types.CallbackQuery) -> N
         chat_id=call.message.chat.id,
         message_id=call.message.message_id,
         reply_markup=keyboards.get_customer_main_keyboard_with_cart(user_id)
+    )
+
+def use_saved_data(bot: telebot.TeleBot, call: types.CallbackQuery) -> None:
+    """Использовать сохраненные данные для заказа."""
+    bot.answer_callback_query(call.id)
+    
+    user_id = call.from_user.id
+    user = db.get_user(user_id)
+    
+    # Проверяем, есть ли сохраненные данные
+    if not user.phone or not user.address:
+        keyboard = types.InlineKeyboardMarkup()
+        keyboard.add(keyboards.BACK_BUTTON)
+        
+        bot.edit_message_text(
+            "У вас нет сохраненных данных.",
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            reply_markup=keyboard
+        )
+        return
+    
+    # Сохраняем данные в состоянии для последующих шагов
+    with bot.retrieve_data(call.from_user.id, call.message.chat.id) as data:
+        data['phone'] = user.phone
+        data['address'] = user.address
+    
+    # Создаем заказ сразу без выбора времени доставки
+    order = db.create_order(user_id, user.phone, user.address, None)
+    
+    if not order:
+        bot.edit_message_text(
+            "Ошибка при создании заказа.",
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            reply_markup=keyboards.get_customer_main_keyboard_with_cart(user_id)
+        )
+        return
+    
+    # Отправляем уведомление администратору о новом заказе
+    try:
+        utils.notify_admin_about_new_order(bot, order.id)
+    except Exception as e:
+        logger = logging.getLogger(__name__)
+        logger.error(f"Не удалось отправить уведомление администратору: {str(e)}")
+        # Не прерываем основной процесс заказа
+    
+    # Устанавливаем состояние CUSTOMER_MODE
+    bot.set_state(call.from_user.id, BotStates.CUSTOMER_MODE, call.message.chat.id)
+    
+    # Подтверждаем заказ
+    bot.edit_message_text(
+        f"Заказ №{order.id} успешно оформлен!\n\n"
+        f"Телефон: {order.phone}\n"
+        f"Адрес доставки: {order.address}\n\n"
+        f"Мы свяжемся с вами в ближайшее время для подтверждения заказа.",
+        chat_id=call.message.chat.id,
+        message_id=call.message.message_id,
+        reply_markup=keyboards.get_customer_main_keyboard_with_cart(user_id)
+    )
+
+def process_phone(bot: telebot.TeleBot, message: types.Message) -> None:
+    """Обработка ввода номера телефона с клавиатуры."""
+    logger = logging.getLogger(__name__)
+    phone = message.text.strip()
+    
+    # Сначала проверим полный формат номера через регулярное выражение
+    # Поддерживаемые форматы: +7XXXXXXXXXX, 8XXXXXXXXXX, 7XXXXXXXXXX, XXXXXXXXXX
+    phone_pattern = re.compile(r'^(?:\+7|7|8)?(\d{10})$')
+    match = phone_pattern.match(re.sub(r'[\s\(\)\-]', '', phone))  # Удаляем пробелы, скобки, дефисы
+    
+    if match:
+        # Если номер соответствует формату, извлекаем 10 цифр номера
+        digits = match.group(1)
+    else:
+        # Иначе пытаемся вручную извлечь цифры
+        digits = re.sub(r'\D', '', phone)
+        
+        logger.info(f"Получен номер телефона: {phone}, извлеченные цифры: {digits}")
+        
+        # Обрабатываем разные форматы номера телефона
+        if digits.startswith('8') or digits.startswith('7'):
+            digits = digits[1:]  # Убираем код страны
+    
+    # Проверяем, что получилось 10 цифр
+    if len(digits) != 10:
+        # Создаем клавиатуру с кнопкой отправки контакта
+        keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        keyboard.add(types.KeyboardButton('📱 Отправить мой контакт', request_contact=True))
+        
+        logger.warning(f"Некорректный номер телефона: {phone}, кол-во цифр: {len(digits)}")
+        
+        # Отправляем сообщение об ошибке
+        bot.send_message(
+            message.chat.id,
+            "❌ <b>Некорректный номер телефона</b>\n\n"
+            f"Вы ввели: <code>{phone}</code>\n"
+            f"Распознано цифр: <code>{len(digits)}</code>\n\n"
+            "Номер должен содержать 10 цифр без учета кода страны.\n"
+            "Примеры форматов: +7XXXXXXXXXX, 8XXXXXXXXXX, XXXXXXXXXX\n\n"
+            "Пожалуйста, попробуйте ещё раз или используйте кнопку 'Отправить мой контакт'.",
+            reply_markup=keyboard,
+            parse_mode='HTML'
+        )
+        return
+    
+    # Форматируем телефон
+    formatted_phone = utils.format_phone("7" + digits)
+    
+    # Сохраняем телефон в данных состояния
+    with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
+        data['phone'] = formatted_phone
+        # Очищаем временные данные
+        data.pop('phone_digits', None)
+    
+    # Сохраняем телефон в профиле пользователя
+    user_id = message.from_user.id
+    user = db.get_user(user_id)
+    user.phone = formatted_phone
+    db.update_user(user_id)
+    
+    # Устанавливаем состояние ADDRESS_INPUT
+    bot.set_state(message.from_user.id, BotStates.ADDRESS_INPUT, message.chat.id)
+    
+    # Возвращаем клавиатуру к стандартной
+    keyboard = types.ReplyKeyboardRemove()
+    
+    # Запрашиваем адрес
+    inline_keyboard = types.InlineKeyboardMarkup()
+    inline_keyboard.add(keyboards.BACK_BUTTON)
+    
+    # Показываем подтверждение принятого номера
+    bot.send_message(
+        message.chat.id,
+        f"✅ <b>Номер телефона принят</b>\n"
+        f"Сохранено: <code>{formatted_phone}</code>\n",
+        reply_markup=keyboard,
+        parse_mode='HTML'
+    )
+    
+    # Запрашиваем адрес доставки с форсированным ответом для удобства
+    force_reply = types.ForceReply(selective=True, input_field_placeholder="Введите ваш адрес доставки")
+    
+    bot.send_message(
+        message.chat.id,
+        "<b>Введите адрес доставки</b>\n\n"
+        "Пожалуйста, укажите подробный адрес доставки, включая:\n"
+        "• Населенный пункт\n"
+        "• Улицу и номер дома\n"
+        "• Подъезд и квартиру\n"
+        "• Удобные ориентиры (при необходимости)",
+        reply_markup=force_reply,
+        parse_mode='HTML'
+    )
+    
+    # Отправляем сообщение с инлайн-кнопкой "Назад"
+    bot.send_message(
+        message.chat.id,
+        "Для возврата к предыдущему шагу нажмите кнопку ниже:",
+        reply_markup=inline_keyboard
     ) 

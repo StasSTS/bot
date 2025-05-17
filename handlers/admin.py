@@ -1683,4 +1683,15 @@ def edit_product_image_upload(bot: telebot.TeleBot, message: types.Message) -> N
             f"📊 Статус: {availability}\n\n"
             f"Выберите действие:",
             reply_markup=keyboard
-        ) 
+        )
+
+def show_orders(bot: telebot.TeleBot, call: types.CallbackQuery) -> None:
+    """Показать список заказов администратору."""
+    bot.answer_callback_query(call.id)
+    
+    # Сбрасываем состояние пагинации
+    import handlers.orders as orders
+    orders.reset_pagination_state()
+    
+    # Показываем список заказов
+    orders.view_orders(bot, call) 

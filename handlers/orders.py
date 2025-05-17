@@ -23,6 +23,11 @@ filter_type = "all"  # "all", "new", "completed"
 sort_type = "date"   # "date", "user"
 sort_direction = "desc"  # "asc", "desc"
 
+# Настройки пагинации
+page_size = 10  # Количество заказов на странице (10 по умолчанию, можно выбрать 20)
+current_page = 1  # Текущая страница
+available_page_sizes = [10, 20]  # Доступные размеры страниц
+
 def view_orders(bot: telebot.TeleBot, call: types.CallbackQuery) -> None:
     """Показать список заказов."""
     logger = logging.getLogger(__name__)
@@ -31,25 +36,53 @@ def view_orders(bot: telebot.TeleBot, call: types.CallbackQuery) -> None:
     try:
         bot.answer_callback_query(call.id)
         
-        # Получаем заказы с учетом текущего фильтра и сортировки
+        # Получаем все заказы для подсчета страниц
+        all_orders = get_filtered_orders(filter_type, sort_type, sort_direction, get_all=True)
+        
+        # Вычисляем общее количество страниц
+        total_orders = len(all_orders)
+        total_pages = max(1, (total_orders + page_size - 1) // page_size)  # Округление вверх
+        logger.info(f"Всего заказов: {total_orders}, размер страницы: {page_size}, всего страниц: {total_pages}")
+        
+        # Проверяем, не выходит ли текущая страница за пределы
+        global current_page
+        if current_page > total_pages:
+            current_page = 1
+        
+        # Получаем заказы для текущей страницы
         orders = get_filtered_orders(filter_type, sort_type, sort_direction)
-        logger.info(f"Получено заказов: {len(orders)} с фильтром={filter_type}, сортировкой={sort_type}, направлением={sort_direction}")
+        logger.info(f"Получено заказов для страницы {current_page}: {len(orders)}")
         
         # Устанавливаем состояние ORDERS_LIST
         bot.set_state(call.from_user.id, BotStates.ORDERS_LIST, call.message.chat.id)
         
         # Получаем клавиатуру для списка заказов
-        keyboard = keyboards.get_orders_list_keyboard(orders, filter_type)
+        keyboard = keyboards.get_orders_list_keyboard(
+            orders, 
+            filter_type, 
+            current_page=current_page, 
+            total_pages=total_pages,
+            page_size=page_size
+        )
         if not keyboard:
             logger.error("Ошибка при создании клавиатуры для списка заказов")
             raise ValueError("Ошибка при создании клавиатуры")
         
-        bot.edit_message_text(
-            f"Список заказов ({len(orders)}):",
-            chat_id=call.message.chat.id,
-            message_id=call.message.message_id,
-            reply_markup=keyboard
-        )
+        try:
+            bot.edit_message_text(
+                f"Список заказов ({total_orders}, стр. {current_page}/{total_pages}):",
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                reply_markup=keyboard
+            )
+        except telebot.apihelper.ApiTelegramException as e:
+            # Проверяем, не является ли это ошибкой 'message is not modified'
+            if "message is not modified" in str(e):
+                # Просто логируем и игнорируем эту ошибку
+                logger.warning(f"Контент сообщения не изменился при просмотре заказов: {str(e)}")
+            else:
+                # Для других ошибок - пробрасываем дальше
+                raise
     except Exception as e:
         logger.error(f"Ошибка при просмотре списка заказов: {str(e)}")
         try:
@@ -58,8 +91,19 @@ def view_orders(bot: telebot.TeleBot, call: types.CallbackQuery) -> None:
         except Exception as e2:
             logger.error(f"Не удалось восстановиться после ошибки просмотра заказов: {str(e2)}")
 
-def get_filtered_orders(filter_type: str, sort_type: str, sort_direction: str) -> List:
-    """Получить список заказов с учетом фильтра и сортировки."""
+def get_filtered_orders(filter_type: str, sort_type: str, sort_direction: str, get_all: bool = False) -> List:
+    """
+    Получить список заказов с учетом фильтра и сортировки.
+    
+    Args:
+        filter_type: Тип фильтра ("all", "new", "completed")
+        sort_type: Тип сортировки ("date", "user")
+        sort_direction: Направление сортировки ("asc", "desc")
+        get_all: Если True, возвращает все заказы без пагинации
+        
+    Returns:
+        Список заказов для текущей страницы или все заказы, если get_all=True
+    """
     logger = logging.getLogger(__name__)
     
     try:
@@ -112,8 +156,28 @@ def get_filtered_orders(filter_type: str, sort_type: str, sort_direction: str) -
             # Без сортировки
             sorted_orders = filtered_orders
         
-        logger.info(f"Возвращаем отсортированных заказов: {len(sorted_orders)}")
-        return sorted_orders
+        # Возвращаем все заказы, если запрошено
+        if get_all:
+            return sorted_orders
+        
+        # Применяем пагинацию
+        total_orders = len(sorted_orders)
+        total_pages = max(1, (total_orders + page_size - 1) // page_size)  # Округление вверх
+        
+        # Если текущая страница вышла за пределы, корректируем её
+        global current_page
+        if current_page > total_pages:
+            current_page = total_pages
+        
+        # Вычисляем индексы начала и конца для текущей страницы
+        start_idx = (current_page - 1) * page_size
+        end_idx = min(start_idx + page_size, total_orders)
+        
+        # Получаем заказы для текущей страницы
+        paginated_orders = sorted_orders[start_idx:end_idx]
+        
+        logger.info(f"Возвращаем {len(paginated_orders)} заказов для страницы {current_page}/{total_pages}")
+        return paginated_orders
     except Exception as e:
         logger.error(f"Ошибка при фильтрации и сортировке заказов: {str(e)}")
         return []
@@ -240,11 +304,26 @@ def handle_order_filter(bot: telebot.TeleBot, call: types.CallbackQuery) -> None
     if len(data_parts) < 3:
         return
     
-    # Обновляем текущий фильтр
-    filter_type = data_parts[2]  # "all", "new", "completed"
+    # Если нажали на тот же фильтр, что уже выбран, ничего не делаем
+    new_filter_type = data_parts[2]  # "all", "new", "completed"
+    if new_filter_type == filter_type:
+        return
+    
+    # Обновляем текущий фильтр и сбрасываем пагинацию
+    filter_type = new_filter_type
+    reset_pagination_state()
     
     # Показываем список заказов с новым фильтром
-    view_orders(bot, call)
+    try:
+        view_orders(bot, call)
+    except telebot.apihelper.ApiTelegramException as e:
+        # Проверяем, не является ли это ошибкой 'message is not modified'
+        if "message is not modified" in str(e):
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Контент сообщения не изменился при фильтрации заказов: {str(e)}")
+        else:
+            # Для других ошибок - пробрасываем дальше
+            raise
 
 def handle_order_sort(bot: telebot.TeleBot, call: types.CallbackQuery) -> None:
     """Обработка сортировки заказов."""
@@ -273,19 +352,22 @@ def handle_order_sort(bot: telebot.TeleBot, call: types.CallbackQuery) -> None:
             sort_type = new_sort_type
             sort_direction = "desc"
         
+        # Сбрасываем пагинацию
+        reset_pagination_state()
+        
         logger.info(f"Новый тип сортировки: {sort_type}, новое направление: {sort_direction}")
         
-        # Получаем отсортированные заказы
-        orders = get_filtered_orders(filter_type, sort_type, sort_direction)
-        logger.info(f"Получено заказов: {len(orders)}")
-        
         # Отображаем заказы с новой сортировкой
-        bot.edit_message_text(
-            f"Список заказов ({len(orders)}):",
-            chat_id=call.message.chat.id,
-            message_id=call.message.message_id,
-            reply_markup=keyboards.get_orders_list_keyboard(orders, filter_type)
-        )
+        try:
+            view_orders(bot, call)
+        except telebot.apihelper.ApiTelegramException as e:
+            # Проверяем, не является ли это ошибкой 'message is not modified'
+            if "message is not modified" in str(e):
+                # Просто логируем и игнорируем эту ошибку
+                logger.warning(f"Контент сообщения не изменился при сортировке заказов: {str(e)}")
+            else:
+                # Для других ошибок - пробрасываем дальше
+                raise
         
     except Exception as e:
         logger.error(f"Ошибка при сортировке заказов: {str(e)}")
@@ -299,6 +381,10 @@ def handle_order_sort(bot: telebot.TeleBot, call: types.CallbackQuery) -> None:
 def back_to_orders(bot: telebot.TeleBot, call: types.CallbackQuery) -> None:
     """Вернуться к списку заказов."""
     bot.answer_callback_query(call.id)
+    
+    # Сбрасываем пагинацию на первую страницу
+    global current_page
+    current_page = 1
     
     # Устанавливаем состояние ORDERS_LIST
     bot.set_state(call.from_user.id, BotStates.ORDERS_LIST, call.message.chat.id)
@@ -388,4 +474,87 @@ def notify_admin_about_new_order(bot: telebot.TeleBot, order_id: int) -> None:
         
         logger.info(f"Уведомление о новом заказе отправлено администратору: order_id={order_id}")
     except Exception as e:
-        logger.error(f"Ошибка при отправке уведомления о заказе администратору: {str(e)}") 
+        logger.error(f"Ошибка при отправке уведомления о заказе администратору: {str(e)}")
+
+def handle_page_navigation(bot: telebot.TeleBot, call: types.CallbackQuery) -> None:
+    """Обработка навигации по страницам."""
+    global current_page, page_size
+    
+    logger = logging.getLogger(__name__)
+    logger.info(f"Обработка навигации по страницам: {call.data}")
+    
+    bot.answer_callback_query(call.id)
+    
+    # Получаем действие из callback_data
+    action = call.data.split("_")[1]  # "prev" или "next"
+    
+    # Получаем все заказы для подсчета страниц
+    all_orders = get_filtered_orders(filter_type, sort_type, sort_direction, get_all=True)
+    total_orders = len(all_orders)
+    total_pages = max(1, (total_orders + page_size - 1) // page_size)
+    
+    # Обновляем текущую страницу в зависимости от действия
+    if action == "prev" and current_page > 1:
+        current_page -= 1
+    elif action == "next" and current_page < total_pages:
+        current_page += 1
+    
+    logger.info(f"Новая страница: {current_page}/{total_pages}")
+    
+    # Показываем список заказов с обновленной страницей
+    try:
+        view_orders(bot, call)
+    except Exception as e:
+        logger.error(f"Ошибка при навигации по страницам: {str(e)}")
+        try:
+            # В случае ошибки возвращаем к главному меню админа
+            admin.back_to_admin_main(bot, call)
+        except:
+            pass
+
+def handle_page_size_change(bot: telebot.TeleBot, call: types.CallbackQuery) -> None:
+    """Обработка изменения размера страницы."""
+    global page_size, current_page
+    
+    logger = logging.getLogger(__name__)
+    logger.info(f"Обработка изменения размера страницы: {call.data}")
+    
+    bot.answer_callback_query(call.id)
+    
+    # Получаем новый размер страницы из callback_data
+    try:
+        new_size = int(call.data.split("_")[2])  # "10" или "20"
+        
+        # Проверяем, что новый размер находится в списке доступных
+        if new_size in available_page_sizes:
+            old_size = page_size
+            page_size = new_size
+            
+            # Корректируем текущую страницу
+            # Например, если мы были на 3й странице с размером 10, 
+            # а теперь выбрали размер 20, нужно перейти на 2ю страницу
+            current_page = ((current_page - 1) * old_size // new_size) + 1
+            
+            logger.info(f"Новый размер страницы: {page_size}, новая страница: {current_page}")
+            
+            # Показываем список заказов с обновленными параметрами
+            try:
+                view_orders(bot, call)
+            except Exception as e:
+                logger.error(f"Ошибка при изменении размера страницы: {str(e)}")
+                try:
+                    # В случае ошибки возвращаем к главному меню админа
+                    admin.back_to_admin_main(bot, call)
+                except:
+                    pass
+        else:
+            logger.warning(f"Недопустимый размер страницы: {new_size}")
+    except (ValueError, IndexError) as e:
+        logger.error(f"Ошибка при обработке размера страницы: {str(e)}")
+
+# Функция для сброса состояния пагинации в значения по умолчанию
+def reset_pagination_state() -> None:
+    """Сбрасывает состояние пагинации (текущая страница и размер страницы) в значения по умолчанию."""
+    global current_page, page_size
+    current_page = 1
+    page_size = 10 

@@ -33,7 +33,7 @@
     "price": 120.0,
     "unit": "кг",
     "image_path": null,
-    "available": true
+    "available": false
   },
   {
     "id": 5,

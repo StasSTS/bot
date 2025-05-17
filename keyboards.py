@@ -322,10 +322,10 @@ def get_delivery_time_keyboard() -> types.InlineKeyboardMarkup:
     return keyboard
 
 # Клавиатуры для работы с заказами
-def get_orders_list_keyboard(orders: List, filter_type: str = "all") -> types.InlineKeyboardMarkup:
+def get_orders_list_keyboard(orders: List, filter_type: str = "all", current_page: int = 1, total_pages: int = 1, page_size: int = 10) -> types.InlineKeyboardMarkup:
     """Клавиатура со списком заказов"""
     logger = logging.getLogger(__name__)
-    logger.info(f"Создание клавиатуры для списка заказов, количество заказов: {len(orders)}, фильтр: {filter_type}")
+    logger.info(f"Создание клавиатуры для списка заказов, количество заказов: {len(orders)}, фильтр: {filter_type}, страница: {current_page}/{total_pages}")
     
     try:
         keyboard = types.InlineKeyboardMarkup()
@@ -334,8 +334,8 @@ def get_orders_list_keyboard(orders: List, filter_type: str = "all") -> types.In
         if not orders:
             keyboard.add(types.InlineKeyboardButton("Нет заказов", callback_data="no_action"))
         else:
-            # Отображаем заказы (не более 10)
-            for order in orders[:10]:
+            # Отображаем заказы текущей страницы
+            for order in orders:
                 # Проверка наличия необходимых атрибутов
                 if not hasattr(order, "id") or not hasattr(order, "created_at") or not hasattr(order, "status"):
                     logger.warning(f"Объект заказа не содержит необходимых атрибутов: {order}")
@@ -358,6 +358,31 @@ def get_orders_list_keyboard(orders: List, filter_type: str = "all") -> types.In
                 except Exception as e:
                     logger.error(f"Ошибка при создании кнопки для заказа {getattr(order, 'id', 'unknown')}: {str(e)}")
                     continue
+        
+        # Добавляем кнопки пагинации, если страниц больше одной
+        if total_pages > 1:
+            pagination_row = []
+            
+            # Кнопка "Назад" (неактивна на первой странице)
+            if current_page > 1:
+                pagination_row.append(types.InlineKeyboardButton("⬅️", callback_data="page_prev"))
+                
+            # Текущая страница/всего страниц
+            pagination_row.append(types.InlineKeyboardButton(f"{current_page}/{total_pages}", callback_data="no_action"))
+            
+            # Кнопка "Вперед" (неактивна на последней странице)
+            if current_page < total_pages:
+                pagination_row.append(types.InlineKeyboardButton("➡️", callback_data="page_next"))
+                
+            keyboard.add(*pagination_row)
+        
+        # Добавляем кнопки для выбора размера страницы
+        page_size_row = []
+        for size in [10, 20]:
+            btn_text = f"🔘 {size} заказов" if size == page_size else f"{size} заказов"
+            page_size_row.append(types.InlineKeyboardButton(btn_text, callback_data=f"page_size_{size}"))
+        
+        keyboard.add(*page_size_row)
         
         # Добавляем кнопки фильтрации
         filter_row = []

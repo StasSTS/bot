@@ -3,6 +3,8 @@ import logging
 import telebot
 from telebot import types
 from telebot.apihelper import ApiTelegramException
+import re
+import utils
 
 import config
 import keyboards
@@ -123,6 +125,36 @@ def main():
                 if check_admin_rights(bot, call):
                     admin.back_to_admin_main(bot, call)
                 return
+            
+            # Обработка для состояния создания товара
+            elif current_state == BotStates.PRODUCT_NAME_INPUT.name:
+                # Возвращаемся к выбору категории
+                if check_admin_rights(bot, call):
+                    admin.add_product_start(bot, call)
+                return
+                
+            # Обработка для состояния ввода цены товара
+            elif current_state == BotStates.PRODUCT_PRICE_INPUT.name:
+                # Возвращаемся к вводу названия товара
+                if check_admin_rights(bot, call):
+                    with bot.retrieve_data(call.from_user.id, call.message.chat.id) as data:
+                        category_id = data.get('product_category_id')
+                    if category_id:
+                        category = db.get_category(category_id)
+                        keyboard = types.InlineKeyboardMarkup()
+                        keyboard.add(keyboards.BACK_BUTTON)
+                        bot.edit_message_text(
+                            f"Выбрана категория: {category.name if category else 'Неизвестная категория'}\n"
+                            f"Введите название товара:",
+                            chat_id=call.message.chat.id,
+                            message_id=call.message.message_id,
+                            reply_markup=keyboard
+                        )
+                        bot.set_state(call.from_user.id, BotStates.PRODUCT_NAME_INPUT, call.message.chat.id)
+                    else:
+                        # Если ID категории не найден, возвращаемся в начало создания товара
+                        admin.add_product_start(bot, call)
+                return
                 
             # Особая обработка для редактирования товаров
             elif current_state == BotStates.PRODUCT_EDIT_NAME_INPUT.name or \
@@ -183,7 +215,7 @@ def main():
             elif call.data == "admin_edit_product":
                 admin.edit_product_select(bot, call)
             elif call.data == "admin_orders":
-                orders.view_orders(bot, call)
+                admin.show_orders(bot, call)
             elif call.data == "admin_delete_product":
                 admin.delete_product_select(bot, call)
             elif call.data == "admin_save_data":
@@ -481,6 +513,15 @@ def main():
                 orders.handle_order_filter(bot, call)
             elif call.data.startswith("sort_orders_"):
                 orders.handle_order_sort(bot, call)
+            elif call.data.startswith("page_"):
+                # Проверяем тип команды пагинации
+                page_cmd = call.data.split("_")[1]
+                if page_cmd in ["prev", "next"]:
+                    # Навигация по страницам
+                    orders.handle_page_navigation(bot, call)
+                elif page_cmd == "size" and len(call.data.split("_")) > 2:
+                    # Изменение размера страницы
+                    orders.handle_page_size_change(bot, call)
             elif call.data == "back":
                 admin.back_to_admin_main(bot, call)
                 
@@ -517,14 +558,16 @@ def main():
         
         # Обработка состояния ввода телефона
         elif current_state == BotStates.PHONE_INPUT.name:
+            # Поддерживаем старую версию интерфейса с виртуальной клавиатурой
+            # и новую версию с кнопкой отправки контакта
             if call.data.startswith("phone_digit_"):
-                # Обработка нажатия на цифру виртуальной клавиатуры
+                # Обработка нажатия на цифру виртуальной клавиатуры (старый интерфейс)
                 cart.process_phone_digit(bot, call)
             elif call.data == "phone_delete":
-                # Обработка удаления последней цифры
+                # Обработка удаления последней цифры (старый интерфейс)
                 cart.process_phone_delete(bot, call)
             elif call.data == "phone_submit":
-                # Обработка подтверждения ввода
+                # Обработка подтверждения ввода (старый интерфейс)
                 cart.process_phone_submit(bot, call)
             elif call.data == "back":
                 # Возвращаемся к экрану оформления заказа
@@ -623,6 +666,127 @@ def main():
                 admin.edit_product_image_upload(bot, message)
         # Здесь будет обработка загрузки фото товаров
         # для других состояний, связанных с редактированием товаров
+    
+    # Обработчик контактов для удобного добавления номера телефона
+    @bot.message_handler(content_types=['contact'])
+    def handle_contact(message):
+        user_id = message.from_user.id
+        current_state = bot.get_state(user_id, message.chat.id)
+        
+        logger = logging.getLogger(__name__)
+        logger.info(f"Получен контакт от пользователя {user_id}")
+        
+        # Обработка отправки контакта при вводе номера телефона
+        if current_state == BotStates.PHONE_INPUT.name:
+            contact = message.contact
+            
+            try:
+                # Проверяем, что контакт принадлежит пользователю
+                if contact.user_id == user_id:
+                    # Получаем номер телефона из контакта
+                    phone_number = contact.phone_number
+                    logger.info(f"Номер телефона из контакта: {phone_number}")
+                    
+                    # Форматируем телефон
+                    digits = re.sub(r'\D', '', phone_number)
+                    
+                    # Убираем код страны если он есть
+                    if digits.startswith('8') or digits.startswith('7'):
+                        digits = digits[1:]
+                    
+                    logger.info(f"Извлеченные цифры номера: {digits}")
+                    
+                    # Проверяем длину
+                    if len(digits) != 10:
+                        logger.warning(f"Неверный формат номера: {digits}, длина: {len(digits)}")
+                        # Создаем клавиатуру с кнопкой отправки контакта
+                        keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+                        keyboard.add(types.KeyboardButton('📱 Отправить мой контакт', request_contact=True))
+                        
+                        bot.send_message(
+                            message.chat.id,
+                            "❌ <b>Неверный формат номера телефона</b>\n\n"
+                            f"Полученный номер: <code>{phone_number}</code>\n"
+                            f"Распознано цифр: <code>{len(digits)}</code>\n\n"
+                            "Номер должен содержать 10 цифр без кода страны.\n"
+                            "Пожалуйста, введите номер телефона вручную.",
+                            reply_markup=keyboard,
+                            parse_mode='HTML'
+                        )
+                        return
+                    
+                    # Форматируем телефон с помощью utils
+                    formatted_phone = utils.format_phone("7" + digits)
+                    logger.info(f"Отформатированный номер: {formatted_phone}")
+                    
+                    # Сохраняем телефон в данных состояния
+                    with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
+                        data['phone'] = formatted_phone
+                        # Очищаем временные данные
+                        data.pop('phone_digits', None)
+                    
+                    # Сохраняем телефон в профиле пользователя
+                    user = db.get_user(user_id)
+                    user.phone = formatted_phone
+                    db.update_user(user_id)
+                    
+                    # Устанавливаем состояние ADDRESS_INPUT
+                    bot.set_state(message.from_user.id, BotStates.ADDRESS_INPUT, message.chat.id)
+                    
+                    # Возвращаем клавиатуру к стандартной
+                    keyboard = types.ReplyKeyboardRemove()
+                    
+                    # Показываем подтверждение принятого номера
+                    bot.send_message(
+                        message.chat.id,
+                        f"✅ <b>Номер телефона принят</b>\n"
+                        f"Сохранено: <code>{formatted_phone}</code>\n",
+                        reply_markup=keyboard,
+                        parse_mode='HTML'
+                    )
+                    
+                    # Запрашиваем адрес
+                    inline_keyboard = types.InlineKeyboardMarkup()
+                    inline_keyboard.add(keyboards.BACK_BUTTON)
+                    
+                    # Запрашиваем адрес доставки с форсированным ответом для удобства
+                    force_reply = types.ForceReply(selective=True, input_field_placeholder="Введите ваш адрес доставки")
+                    
+                    bot.send_message(
+                        message.chat.id,
+                        "<b>Введите адрес доставки</b>\n\n"
+                        "Пожалуйста, укажите подробный адрес доставки, включая:\n"
+                        "• Населенный пункт\n"
+                        "• Улицу и номер дома\n"
+                        "• Подъезд и квартиру\n"
+                        "• Удобные ориентиры (при необходимости)",
+                        reply_markup=force_reply,
+                        parse_mode='HTML'
+                    )
+                    
+                    # Отправляем сообщение с инлайн-кнопкой "Назад"
+                    bot.send_message(
+                        message.chat.id,
+                        "Для возврата к предыдущему шагу нажмите кнопку ниже:",
+                        reply_markup=inline_keyboard
+                    )
+                else:
+                    bot.send_message(
+                        message.chat.id,
+                        "Вы можете отправить только свой контакт. Пожалуйста, нажмите кнопку 'Отправить контакт' или введите номер телефона вручную.",
+                    )
+            except Exception as e:
+                logger.error(f"Ошибка при обработке контакта: {str(e)}")
+                # Создаем клавиатуру с кнопкой отправки контакта
+                keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+                keyboard.add(types.KeyboardButton('📱 Отправить мой контакт', request_contact=True))
+                
+                # Отправляем пользователю сообщение об ошибке
+                bot.send_message(
+                    message.chat.id,
+                    "Произошла ошибка при обработке контакта. Пожалуйста, введите номер вручную.",
+                    reply_markup=keyboard
+                )
     
     logger.info("Бот запущен")
     bot.infinity_polling()

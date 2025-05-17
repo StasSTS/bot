@@ -369,17 +369,38 @@ def use_saved_data(bot: telebot.TeleBot, call: types.CallbackQuery) -> None:
         data['phone'] = user.phone
         data['address'] = user.address
     
-    # Устанавливаем состояние DELIVERY_TIME_SELECT
-    bot.set_state(call.from_user.id, BotStates.DELIVERY_TIME_SELECT, call.message.chat.id)
+    # Создаем заказ сразу без выбора времени доставки
+    order = db.create_order(user_id, user.phone, user.address, None)
     
-    # Отправляем сообщение с выбором времени доставки
+    if not order:
+        bot.edit_message_text(
+            "Ошибка при создании заказа.",
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            reply_markup=keyboards.get_customer_main_keyboard_with_cart(user_id)
+        )
+        return
+    
+    # Отправляем уведомление администратору о новом заказе
+    try:
+        utils.notify_admin_about_new_order(bot, order.id)
+    except Exception as e:
+        logger = logging.getLogger(__name__)
+        logger.error(f"Не удалось отправить уведомление администратору: {str(e)}")
+        # Не прерываем основной процесс заказа
+    
+    # Устанавливаем состояние CUSTOMER_MODE
+    bot.set_state(call.from_user.id, BotStates.CUSTOMER_MODE, call.message.chat.id)
+    
+    # Подтверждаем заказ
     bot.edit_message_text(
-        f"Телефон: {user.phone}\n"
-        f"Адрес: {user.address}\n\n"
-        f"Выберите удобное время доставки:",
+        f"Заказ №{order.id} успешно оформлен!\n\n"
+        f"Телефон: {order.phone}\n"
+        f"Адрес доставки: {order.address}\n\n"
+        f"Мы свяжемся с вами в ближайшее время для подтверждения заказа.",
         chat_id=call.message.chat.id,
         message_id=call.message.message_id,
-        reply_markup=keyboards.get_delivery_time_keyboard()
+        reply_markup=keyboards.get_customer_main_keyboard_with_cart(user_id)
     )
 
 def process_phone(bot: telebot.TeleBot, message: types.Message) -> None:
@@ -463,24 +484,46 @@ def process_address(bot: telebot.TeleBot, message: types.Message) -> None:
         return
     
     # Сохраняем адрес в данных состояния
+    user_id = message.from_user.id
     with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
         data['address'] = address
         phone = data.get('phone', None)
     
     # Сохраняем в профиле пользователя
-    user_id = message.from_user.id
     user = db.get_user(user_id)
     user.address = address
     db.update_user(user_id)
+
+    # Создаем заказ сразу без выбора времени доставки
+    order = db.create_order(user_id, phone, address, None)
     
-    # Устанавливаем состояние DELIVERY_TIME_SELECT
-    bot.set_state(message.from_user.id, BotStates.DELIVERY_TIME_SELECT, message.chat.id)
+    if not order:
+        bot.send_message(
+            message.chat.id,
+            "Ошибка при создании заказа.",
+            reply_markup=keyboards.get_customer_main_keyboard_with_cart(user_id)
+        )
+        return
     
-    # Отправляем сообщение с выбором времени доставки
+    # Отправляем уведомление администратору о новом заказе
+    try:
+        utils.notify_admin_about_new_order(bot, order.id)
+    except Exception as e:
+        logger = logging.getLogger(__name__)
+        logger.error(f"Не удалось отправить уведомление администратору: {str(e)}")
+        # Не прерываем основной процесс заказа
+    
+    # Устанавливаем состояние CUSTOMER_MODE
+    bot.set_state(message.from_user.id, BotStates.CUSTOMER_MODE, message.chat.id)
+    
+    # Подтверждаем заказ
     bot.send_message(
         message.chat.id,
-        f"Адрес сохранен: {address}\n\nВыберите удобное время доставки:",
-        reply_markup=keyboards.get_delivery_time_keyboard()
+        f"Заказ №{order.id} успешно оформлен!\n\n"
+        f"Телефон: {order.phone}\n"
+        f"Адрес доставки: {order.address}\n\n"
+        f"Мы свяжемся с вами в ближайшее время для подтверждения заказа.",
+        reply_markup=keyboards.get_customer_main_keyboard_with_cart(user_id)
     )
 
 def delivery_time_selected(bot: telebot.TeleBot, call: types.CallbackQuery) -> None:

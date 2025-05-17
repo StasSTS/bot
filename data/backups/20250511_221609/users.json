@@ -1,0 +1,20 @@
+{
+  "1037625085": {
+    "id": 1037625085,
+    "username": null,
+    "phone": "+7-928-661-67-75",
+    "address": "Агар ал",
+    "favorites": [
+      2,
+      1,
+      4
+    ],
+    "cart": [
+      {
+        "product_id": 1,
+        "quantity": 0.5
+      }
+    ],
+    "is_admin": true
+  }
+}

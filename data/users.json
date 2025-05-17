@@ -1,0 +1,34 @@
+{
+  "1037625085": {
+    "id": 1037625085,
+    "username": null,
+    "phone": "+7-918-325-16-77",
+    "address": "Вода",
+    "favorites": [
+      2,
+      1,
+      4,
+      3
+    ],
+    "cart": [],
+    "is_admin": true
+  },
+  "7951693028": {
+    "id": 7951693028,
+    "username": null,
+    "phone": "+7-918-412-65-62",
+    "address": "Апшеронск",
+    "favorites": [],
+    "cart": [],
+    "is_admin": false
+  },
+  "7527918127": {
+    "id": 7527918127,
+    "username": "DostavkaApsheronsk_bot",
+    "phone": null,
+    "address": null,
+    "favorites": [],
+    "cart": [],
+    "is_admin": false
+  }
+}

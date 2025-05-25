@@ -182,7 +182,7 @@ def get_products_by_category_keyboard(category_id: int, user_id: int) -> types.I
     
     return keyboard
 
-def get_product_detail_keyboard(product: Product, user_id: int) -> types.InlineKeyboardMarkup:
+def get_product_detail_keyboard(product: Product, user_id: int, allow_custom_quantity: bool = False) -> types.InlineKeyboardMarkup:
     """Клавиатура для детальной информации о товаре"""
     logger = logging.getLogger(__name__)
     logger.info(f"Создание клавиатуры детальной информации о товаре {product.id} для пользователя: {user_id}")
@@ -214,19 +214,18 @@ def get_product_detail_keyboard(product: Product, user_id: int) -> types.InlineK
             types.InlineKeyboardButton("+0.25 кг", callback_data=f"add_to_cart_{product.id}_0.25"),
             types.InlineKeyboardButton("+0.1 кг", callback_data=f"add_to_cart_{product.id}_0.1")
         )
-    
+    # Новая кнопка для ручного ввода количества
+    if allow_custom_quantity:
+        keyboard.add(types.InlineKeyboardButton("Ввести количество", callback_data=f"custom_quantity_{product.id}"))
     # Кнопка для удаления товара из корзины
     keyboard.add(types.InlineKeyboardButton("Удалить из корзины", callback_data=f"remove_from_cart_{product.id}"))
-    
     # Кнопка назад
     keyboard.add(BACK_BUTTON)
-    
     # Корзина, если не пуста
     if user.cart:
         total = utils.calculate_cart_total(user_id)
         logger.info(f"Добавление кнопки корзины в детали товара: Корзина ({utils.format_money(total)}), callback_data=cart")
         keyboard.add(types.InlineKeyboardButton(f"🛒 Корзина ({utils.format_money(total)})", callback_data="cart"))
-    
     return keyboard
 
 def get_favorites_keyboard(user_id: int) -> types.InlineKeyboardMarkup:

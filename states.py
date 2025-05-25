@@ -44,4 +44,5 @@ class BotStates(StatesGroup):
     
     # Состояния для работы с заказами
     ORDERS_LIST = State()
-    ORDER_DETAIL = State() 
+    ORDER_DETAIL = State()
+    CUSTOM_QUANTITY_INPUT = State() 

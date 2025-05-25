@@ -176,32 +176,29 @@ def product_selected(bot: telebot.TeleBot, call: types.CallbackQuery) -> None:
     
     # Показываем детальную информацию о товаре
     if product.image_path:
-        # Если у товара есть изображение (file_id), отправляем его
         try:
             bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.message_id)
             bot.send_photo(
                 chat_id=call.message.chat.id,
                 photo=product.image_path,
                 caption=product_text,
-                reply_markup=keyboards.get_product_detail_keyboard(product, call.from_user.id)
+                reply_markup=keyboards.get_product_detail_keyboard(product, call.from_user.id, allow_custom_quantity=True)
             )
         except Exception as e:
             logger = logging.getLogger(__name__)
             logger.error(f"Ошибка при отправке фото товара: {e}")
-            # Если не удалось отправить фото, просто обновляем текст
             bot.edit_message_text(
                 product_text,
                 chat_id=call.message.chat.id,
                 message_id=call.message.message_id,
-                reply_markup=keyboards.get_product_detail_keyboard(product, call.from_user.id)
+                reply_markup=keyboards.get_product_detail_keyboard(product, call.from_user.id, allow_custom_quantity=True)
             )
     else:
-        # Если изображения нет, просто обновляем текст
         bot.edit_message_text(
             product_text,
             chat_id=call.message.chat.id,
             message_id=call.message.message_id,
-            reply_markup=keyboards.get_product_detail_keyboard(product, call.from_user.id)
+            reply_markup=keyboards.get_product_detail_keyboard(product, call.from_user.id, allow_custom_quantity=True)
         )
 
 def back_to_category(bot: telebot.TeleBot, call: types.CallbackQuery) -> None:
@@ -521,4 +518,76 @@ def remove_from_cart(bot: telebot.TeleBot, call: types.CallbackQuery) -> None:
         bot.answer_callback_query(
             call.id,
             text="Не удалось удалить товар из корзины"
-        ) 
+        )
+
+# Новая функция: обработка перехода к ручному вводу количества
+def ask_custom_quantity(bot: telebot.TeleBot, call: types.CallbackQuery) -> None:
+    """Запросить у пользователя ввод количества товара вручную."""
+    bot.answer_callback_query(call.id)
+    # Сохраняем ID товара в состоянии
+    data_parts = call.data.split("_")
+    if len(data_parts) < 4:
+        return
+    product_id = int(data_parts[3])
+    with bot.retrieve_data(call.from_user.id, call.message.chat.id) as data:
+        data['current_product_id'] = product_id
+    # Устанавливаем специальное состояние
+    bot.set_state(call.from_user.id, BotStates.CUSTOM_QUANTITY_INPUT, call.message.chat.id)
+    # Показываем ForceReply с подсказкой
+    force_reply = types.ForceReply(selective=True, input_field_placeholder="Можете указать кол-во товара (например: 2.3)")
+    bot.send_message(
+        call.message.chat.id,
+        "Введите нужное количество товара (например: 2.3):",
+        reply_markup=force_reply
+    )
+
+# Новая функция: обработка ручного ввода количества
+def process_custom_quantity(bot: telebot.TeleBot, message: types.Message) -> None:
+    """Обработка ручного ввода количества товара пользователем."""
+    import re
+    from database import db
+    from states import BotStates
+    user_id = message.from_user.id
+    text = message.text.strip().replace(",", ".")
+    # Проверяем, что введено число
+    match = re.match(r"^\d+(\.\d+)?$", text)
+    if not match:
+        force_reply = types.ForceReply(selective=True, input_field_placeholder="Можете указать кол-во товара (например: 2.3)")
+        bot.send_message(
+            message.chat.id,
+            "Пожалуйста, введите корректное число (например: 2.3):",
+            reply_markup=force_reply
+        )
+        return
+    quantity = float(text)
+    if quantity <= 0:
+        force_reply = types.ForceReply(selective=True, input_field_placeholder="Можете указать кол-во товара (например: 2.3)")
+        bot.send_message(
+            message.chat.id,
+            "Количество должно быть больше 0. Попробуйте ещё раз:",
+            reply_markup=force_reply
+        )
+        return
+    # Получаем ID товара из состояния
+    with bot.retrieve_data(user_id, message.chat.id) as data:
+        product_id = data.get('current_product_id')
+    if not product_id:
+        bot.send_message(message.chat.id, "Ошибка: не удалось определить товар.")
+        return
+    # Добавляем товар в корзину
+    user = db.get_user(user_id)
+    user.add_to_cart(product_id, quantity)
+    db.update_user(user_id)
+    product = db.get_product(product_id)
+    # Сбрасываем состояние
+    bot.set_state(user_id, BotStates.PRODUCT_DETAIL, message.chat.id)
+    # Показываем подтверждение и обновляем детали товара
+    bot.send_message(
+        message.chat.id,
+        f"Товар '{product.name}' ({quantity} {product.unit}) добавлен в корзину!"
+    )
+    product_selected(bot, types.SimpleNamespace(
+        from_user=types.SimpleNamespace(id=user_id),
+        message=message,
+        data=f"product_{product_id}"
+    )) 

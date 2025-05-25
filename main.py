@@ -424,6 +424,8 @@ def main():
                 customer.add_to_cart(bot, call)
             elif call.data.startswith("remove_from_cart_"):
                 customer.remove_from_cart(bot, call)
+            elif call.data.startswith("custom_quantity_"):
+                customer.ask_custom_quantity(bot, call)
             elif call.data == "back":
                 customer.back_to_customer_main(bot, call)
             elif call.data == "cart":
@@ -649,6 +651,10 @@ def main():
         # Обработка ввода адреса
         elif current_state == BotStates.ADDRESS_INPUT.name:
             cart.process_address(bot, message)
+        
+        # Обработка ручного ввода количества товара
+        elif current_state == BotStates.CUSTOM_QUANTITY_INPUT.name:
+            customer.process_custom_quantity(bot, message)
     
     # Обработчик фото (для добавления и редактирования товаров)
     @bot.message_handler(content_types=['photo'])

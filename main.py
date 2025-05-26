@@ -21,7 +21,7 @@ from threading import Thread
 
 # Изменяем импорт werkzeug для совместимости
 try:
-    from werkzeug.utils import url_quote
+    from urllib.parse import quote as url_quote
 except ImportError:
     from werkzeug.urls import url_quote
 

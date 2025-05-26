@@ -3,6 +3,7 @@ import os
 import telebot
 from telebot import types
 import logging
+from types import SimpleNamespace
 
 import keyboards
 import utils
@@ -143,7 +144,12 @@ def category_selected(bot: telebot.TeleBot, call: types.CallbackQuery) -> None:
 
 def product_selected(bot: telebot.TeleBot, call: types.CallbackQuery) -> None:
     """Показать детальную информацию о товаре."""
-    bot.answer_callback_query(call.id)
+    # Безопасно отвечаем на callback, если это реально callback
+    if hasattr(call, 'id') and call.id is not None:
+        try:
+            bot.answer_callback_query(call.id)
+        except Exception:
+            pass
     
     # Получаем ID товара из callback_data
     data_parts = call.data.split("_")
@@ -433,7 +439,7 @@ def add_to_cart(bot: telebot.TeleBot, call: types.CallbackQuery) -> None:
     bot.edit_message_reply_markup(
         chat_id=call.message.chat.id,
         message_id=call.message.message_id,
-        reply_markup=keyboards.get_product_detail_keyboard(product, user_id)
+        reply_markup=keyboards.get_product_detail_keyboard(product, user_id, allow_custom_quantity=True)
     )
     
     # Показываем сообщение о добавлении в корзину
@@ -504,7 +510,7 @@ def remove_from_cart(bot: telebot.TeleBot, call: types.CallbackQuery) -> None:
         bot.edit_message_reply_markup(
             chat_id=call.message.chat.id,
             message_id=call.message.message_id,
-            reply_markup=keyboards.get_product_detail_keyboard(product, user_id)
+            reply_markup=keyboards.get_product_detail_keyboard(product, user_id, allow_custom_quantity=True)
         )
         
         # Показываем сообщение об удалении из корзины
@@ -526,9 +532,9 @@ def ask_custom_quantity(bot: telebot.TeleBot, call: types.CallbackQuery) -> None
     bot.answer_callback_query(call.id)
     # Сохраняем ID товара в состоянии
     data_parts = call.data.split("_")
-    if len(data_parts) < 4:
+    if len(data_parts) < 3:
         return
-    product_id = int(data_parts[3])
+    product_id = int(data_parts[2])
     with bot.retrieve_data(call.from_user.id, call.message.chat.id) as data:
         data['current_product_id'] = product_id
     # Устанавливаем специальное состояние
@@ -586,8 +592,36 @@ def process_custom_quantity(bot: telebot.TeleBot, message: types.Message) -> Non
         message.chat.id,
         f"Товар '{product.name}' ({quantity} {product.unit}) добавлен в корзину!"
     )
-    product_selected(bot, types.SimpleNamespace(
-        from_user=types.SimpleNamespace(id=user_id),
-        message=message,
+    call_product_selected_from_message(bot, message, product_id)
+
+def call_product_selected_from_message(bot, message, product_id):
+    """Вызывает product_selected с эмуляцией CallbackQuery на основе Message."""
+    class FakeFromUser:
+        def __init__(self, id):
+            self.id = id
+    class FakeMessage:
+        def __init__(self, chat_id, message_id, content_type):
+            class Chat:
+                def __init__(self, id):
+                    self.id = id
+            self.chat = Chat(chat_id)
+            self.message_id = message_id
+            self.content_type = content_type
+    class FakeCall:
+        def __init__(self, user_id, chat_id, message_id, content_type, data):
+            self.from_user = FakeFromUser(user_id)
+            self.message = FakeMessage(chat_id, message_id, content_type)
+            self.data = data
+        def answer(self):
+            pass
+        def answer_callback_query(self, *args, **kwargs):
+            pass
+        id = 0
+    fake_call = FakeCall(
+        user_id=message.from_user.id,
+        chat_id=message.chat.id,
+        message_id=getattr(message, 'message_id', None),
+        content_type=getattr(message, 'content_type', 'text'),
         data=f"product_{product_id}"
-    )) 
+    )
+    product_selected(bot, fake_call) 

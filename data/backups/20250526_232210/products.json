@@ -1,0 +1,47 @@
+[
+  {
+    "id": 1,
+    "name": "🍓 Клубника  🍓",
+    "category_id": 1,
+    "price": 300.0,
+    "unit": "кг",
+    "image_path": "AgACAgIAAxkBAAIHWWgjCcLReZFpKnBeoQ5f9xMVHmSBAAIM9zEbpQkYSbJT-wABaNqePAEAAwIAA3kAAzYE",
+    "available": true
+  },
+  {
+    "id": 2,
+    "name": "🥔 картофель",
+    "category_id": 2,
+    "price": 100.0,
+    "unit": "кг",
+    "image_path": "AgACAgIAAxkBAAIGI2gg2qV7ASi8NrkUk7i2s5dfdrcJAAKh9zEbj5oJSZf8xPd0AnIzAQADAgADeQADNgQ",
+    "available": true
+  },
+  {
+    "id": 3,
+    "name": "🫑 перец болгарский",
+    "category_id": 2,
+    "price": 150.0,
+    "unit": "кг",
+    "image_path": "AgACAgIAAxkBAAIGe2gg6amcSBs8evcZmLPnQaBn75ADAAIl-DEbj5oJSdGIcWA5Z6nMAQADAgADeQADNgQ",
+    "available": true
+  },
+  {
+    "id": 4,
+    "name": "Арбуз 🍉",
+    "category_id": 1,
+    "price": 120.0,
+    "unit": "кг",
+    "image_path": null,
+    "available": false
+  },
+  {
+    "id": 5,
+    "name": "🥝 Киви",
+    "category_id": 1,
+    "price": 200.0,
+    "unit": "кг",
+    "image_path": "AgACAgIAAxkBAAIHBGgg_UeXjco7584ezjEV6MOlPwgBAAKZ-DEbj5oJSc79ef5YCEvUAQADAgADeQADNgQ",
+    "available": true
+  }
+]

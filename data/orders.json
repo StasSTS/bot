@@ -354,5 +354,21 @@
     "address": "Апшеронск Ворошилова 23",
     "delivery_time": null,
     "total": 300.0
+  },
+  {
+    "id": 21,
+    "user_id": 1037625085,
+    "items": [
+      {
+        "product_id": 2,
+        "quantity": 50.0
+      }
+    ],
+    "status": "new",
+    "created_at": "2025-05-26T23:21:46.510143",
+    "phone": "+7-918-492-18-78",
+    "address": "Апшеронск Ворошилова 23",
+    "delivery_time": null,
+    "total": 5000.0
   }
 ]

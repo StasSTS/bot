@@ -197,7 +197,7 @@ def get_product_detail_keyboard(product: Product, user_id: int, allow_custom_qua
         keyboard.add(BACK_BUTTON)
         return keyboard
     
-    favorite_text = "❌ Удалить из избранного" if product.id in user.favorites else "➕ Добавить в избранное"
+    favorite_text = "❌ Удалить из избранного" if product.id in user.favorites else "❤ Добавить в избранное"
     favorite_callback = f"remove_favorite_{product.id}" if product.id in user.favorites else f"add_favorite_{product.id}"
     
     keyboard.add(types.InlineKeyboardButton(favorite_text, callback_data=favorite_callback))
@@ -217,8 +217,12 @@ def get_product_detail_keyboard(product: Product, user_id: int, allow_custom_qua
     # Новая кнопка для ручного ввода количества
     if allow_custom_quantity:
         keyboard.add(types.InlineKeyboardButton("👉 Ввести количество", callback_data=f"custom_quantity_{product.id}"))
-    # Кнопка для удаления товара из корзины
-    keyboard.add(types.InlineKeyboardButton("❌ Удалить из корзины", callback_data=f"remove_from_cart_{product.id}"))
+    
+    # Кнопка для удаления товара из корзины только если товар есть в корзине
+    product_in_cart = any(item.product_id == product.id for item in user.cart)
+    if product_in_cart:
+        keyboard.add(types.InlineKeyboardButton("❌ Удалить из корзины", callback_data=f"remove_from_cart_{product.id}"))
+    
     # Кнопка назад
     keyboard.add(BACK_BUTTON)
     # Корзина, если не пуста
@@ -470,4 +474,4 @@ def get_phone_input_keyboard(current_phone: str = "") -> types.InlineKeyboardMar
     # Добавляем кнопку "Назад"
     keyboard.add(BACK_BUTTON)
     
-    return keyboard 
+    return keyboard

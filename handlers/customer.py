@@ -242,7 +242,7 @@ def back_to_category(bot: telebot.TeleBot, call: types.CallbackQuery) -> None:
     )
 
 def add_to_favorites(bot: telebot.TeleBot, call: types.CallbackQuery) -> None:
-    """➕ Добавить товар в избранное."""
+    """❤ Добавить товар в избранное."""
     bot.answer_callback_query(call.id)
     
     # Получаем ID товара из callback_data
@@ -339,14 +339,23 @@ def search_start(bot: telebot.TeleBot, call: types.CallbackQuery) -> None:
     # Устанавливаем состояние SEARCH_INPUT
     bot.set_state(call.from_user.id, BotStates.SEARCH_INPUT, call.message.chat.id)
     
-    # Создаем клавиатуру с кнопкой "Назад"
+    # Показываем ForceReply с подсказкой
+    force_reply = types.ForceReply(selective=True, input_field_placeholder="Введите название товара для поиска")
+    
+    # Отправляем сообщение с ForceReply
+    bot.send_message(
+        call.message.chat.id,
+        "Введите название товара для поиска:",
+        reply_markup=force_reply
+    )
+    
+    # Добавляем кнопку "Назад" в отдельном сообщении
     keyboard = types.InlineKeyboardMarkup()
     keyboard.add(keyboards.BACK_BUTTON)
     
-    bot.edit_message_text(
-        "Введите название товара для поиска:",
-        chat_id=call.message.chat.id,
-        message_id=call.message.message_id,
+    bot.send_message(
+        call.message.chat.id,
+        "Для возврата в главное меню нажмите кнопку ниже:",
         reply_markup=keyboard
     )
 
@@ -585,14 +594,27 @@ def process_custom_quantity(bot: telebot.TeleBot, message: types.Message) -> Non
     user.add_to_cart(product_id, quantity)
     db.update_user(user_id)
     product = db.get_product(product_id)
-    # Сбрасываем состояние
-    bot.set_state(user_id, BotStates.PRODUCT_DETAIL, message.chat.id)
-    # Показываем подтверждение и обновляем детали товара
+    # Сбрасываем состояние на режим покупателя (главная страница)
+    bot.set_state(user_id, BotStates.CUSTOMER_MODE, message.chat.id)
+    # Показываем подтверждение
     bot.send_message(
         message.chat.id,
         f"Товар '{product.name}' ({quantity} {product.unit}) добавлен в корзину!"
     )
-    call_product_selected_from_message(bot, message, product_id)
+    # Добавляем паузу для визуального разделения
+    import time
+    time.sleep(0.5)
+    # Отправляем разделитель для лучшей читаемости
+    bot.send_message(
+        message.chat.id,
+        "➖➖➖➖➖➖➖➖➖➖➖➖"
+    )
+    # Отправляем главное меню покупателя
+    bot.send_message(
+        message.chat.id,
+        "Главное меню:",
+        reply_markup=keyboards.get_customer_main_keyboard_with_cart(user_id)
+    )
 
 def call_product_selected_from_message(bot, message, product_id):
     """Вызывает product_selected с эмуляцией CallbackQuery на основе Message."""
@@ -624,4 +646,4 @@ def call_product_selected_from_message(bot, message, product_id):
         content_type=getattr(message, 'content_type', 'text'),
         data=f"product_{product_id}"
     )
-    product_selected(bot, fake_call) 
+    product_selected(bot, fake_call)

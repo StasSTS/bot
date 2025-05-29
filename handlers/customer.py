@@ -242,7 +242,7 @@ def back_to_category(bot: telebot.TeleBot, call: types.CallbackQuery) -> None:
     )
 
 def add_to_favorites(bot: telebot.TeleBot, call: types.CallbackQuery) -> None:
-    """Добавить товар в избранное."""
+    """➕ Добавить товар в избранное."""
     bot.answer_callback_query(call.id)
     
     # Получаем ID товара из callback_data
@@ -273,7 +273,7 @@ def add_to_favorites(bot: telebot.TeleBot, call: types.CallbackQuery) -> None:
     )
 
 def remove_from_favorites(bot: telebot.TeleBot, call: types.CallbackQuery) -> None:
-    """Удалить товар из избранного."""
+    """❌ Удалить товар из избранного."""
     bot.answer_callback_query(call.id)
     
     # Получаем ID товара из callback_data
@@ -401,7 +401,7 @@ def search_process(bot: telebot.TeleBot, message: types.Message) -> None:
         )
 
 def add_to_cart(bot: telebot.TeleBot, call: types.CallbackQuery) -> None:
-    """Добавить товар в корзину."""
+    """➕ Добавить товар в корзину."""
     bot.answer_callback_query(call.id)
     
     # Получаем данные из callback_data
@@ -449,7 +449,7 @@ def add_to_cart(bot: telebot.TeleBot, call: types.CallbackQuery) -> None:
     )
 
 def remove_from_cart(bot: telebot.TeleBot, call: types.CallbackQuery) -> None:
-    """Удалить товар из корзины."""
+    """❌ Удалить товар из корзины."""
     logger = logging.getLogger(__name__)
     logger.info(f"Удаление товара из корзины: user_id={call.from_user.id}, callback_data={call.data}")
     
